@@ -1,0 +1,570 @@
+Microsoft (R) Macro Assembler Version 6.14.8444		    03/13/14 22:50:03
+blit.asm						     Page 1 - 1
+
+
+				; #########################################################################
+				;
+				;   blit.asm - Assembly file for EECS205 Assignment 2
+				;
+				;
+				; #########################################################################
+
+				      .586
+				      .MODEL FLAT,STDCALL
+				      .STACK 4096
+				      option casemap :none  ; case sensitive
+
+				    include blit.inc		; Take a look at this file to understand how
+			      C ; #########################################################################
+			      C ;
+			      C ;   blit.inc - Includes for EECS205 Assignment 2
+			      C ;
+			      C ;
+			      C ; #########################################################################
+			      C 
+			      C 
+ 00000010		      C _EECS205BITMAP STRUCT
+ 00000000  00000000	      C  dwWidth      DWORD  ?
+ 00000004  00000000	      C  dwHeight     DWORD  ?
+ 00000008  00		      C  bTransparent BYTE   ?
+ 00000009  00000003 [	      C               BYTE   3 DUP(?)
+	    00
+	   ]
+ 0000000C  00000000	      C  lpBytes      DWORD  ?
+			      C _EECS205BITMAP ENDS
+			      C 
+			      C EECS205BITMAP TYPEDEF _EECS205BITMAP
+			      C 
+			      C EXTERNDEF StarBitmap:EECS205BITMAP
+			      C EXTERNDEF dwPitch:DWORD
+			      C EXTERNDEF lpDisplayBits:DWORD
+			      C 
+			      C 
+			      C BlitReg PROTO STDCALL   ; Renders a bitmap to the 2D drawing space
+			      C                         ; Uses register passed parameters:
+			      C                         ;      esi = x-coordinate (of image center)
+			      C                         ;      edi = y-coordinate (of image center)
+			      C 			;      edx = pointer to the bitmap to draw
+			      C 
+			      C 
+			      C 
+								;      bitmaps are declared
+
+ 00000000			.DATA
+					;; You may declare helper variables here.
+ 00000000 00000000			bmpY DWORD 0
+ 00000004 00000000			bmpX DWORD 0
+					
+ 00000008 0000027F			maxX DWORD 639
+ 0000000C 000001DF			maxY DWORD 479
+					
+ 00000010 00000000			bmWidth DWORD ?
+ 00000014 00000000			bmHeight DWORD ?
+					
+ 00000018 00				transpValue BYTE ? ;transparent value
+					
+ 00000019 00000000			colorBytes DWORD ?  ;color value start address
+					
+ 0000001D 00000000			screenX DWORD ? ;xlocation to draw
+ 00000021 00000000			screenY DWORD ? ;ylocation to draw
+					
+ 00000025 00000000			centerX DWORD ? ;center xloc
+ 00000029 00000000			centerY DWORD ? ;center yloc
+
+ 00000000			.CODE
+
+				; Routine which draws a bitmap to the screen
+ 00000000			BlitReg PROC uses edx esi edi eax
+					;; INPUT PARAMETERS
+					; edx - srcBitMap
+					; esi - x coord of mouse
+					; edi - y coord of mouse
+					
+ 00000004  C7 05 00000000 R		mov bmpY, 0 ; initialize loop counter to 0
+	   00000000
+ 0000000E  C7 05 00000004 R		mov bmpX, 0 ; initialize loop counter to 0
+	   00000000
+					
+ 00000018  89 35 00000025 R		mov centerX, esi ;mouse x
+ 0000001E  89 3D 00000029 R		mov centerY, edi ;mouse y
+					
+ 00000024  8A 42 08			mov al, (EECS205BITMAP PTR [edx]).bTransparent 
+ 00000027  A2 00000018 R		mov transpValue, al 			;srcBitMap transparent value
+					
+ 0000002C  8B 42 0C			mov eax, (EECS205BITMAP PTR [edx]).lpBytes 
+ 0000002F  A3 00000019 R		mov colorBytes, eax 			;srcBitMap color value address
+					
+ 00000034  8B 02			mov eax,(EECS205BITMAP PTR [edx]).dwWidth 
+ 00000036  A3 00000010 R		mov bmWidth, eax					;srcBitMap Width
+					
+ 0000003B  8B 42 04			mov eax,(EECS205BITMAP PTR [edx]).dwHeight 
+ 0000003E  A3 00000014 R		mov bmHeight, eax 					;srcBitMap Height
+					
+ 00000043  8B 3D 00000000 E		mov edi, lpDisplayBits
+
+ 00000049			xLoop:
+ 00000049  A1 00000025 R		mov eax, centerX
+ 0000004E  03 05 00000004 R		add eax, bmpX
+ 00000054  8B 1D 00000010 R		mov ebx, bmWidth
+ 0000005A  D1 EB			shr ebx, 1    ;dwWidth/2
+ 0000005C  2B C3			sub eax, ebx
+ 0000005E  A3 0000001D R		mov screenX, eax ; screenX = centerX + bmpX - srcBitmap->dwWidth/2;
+
+ 00000063  A1 00000029 R		mov eax, centerY
+ 00000068  03 05 00000000 R		add eax, bmpY
+ 0000006E  8B 1D 00000014 R		mov ebx, bmHeight
+ 00000074  D1 EB			shr ebx, 1    ;dwHeight/2
+ 00000076  2B C3			sub eax, ebx
+ 00000078  A3 00000021 R		mov screenY, eax  ; screenY = centerY + bmpY - srcBitmap->dwHeight/2;
+					
+					;; check if off screen
+ 0000007D  83 3D 0000001D R		cmp screenX, 0
+	   00
+ 00000084  7C 5C			jl SKIP
+ 00000086  83 3D 00000021 R		cmp screenY, 0
+	   00
+ 0000008D  7C 53			jl SKIP
+ 0000008F  A1 00000008 R		mov eax, maxX
+ 00000094  39 05 0000001D R		cmp screenX, eax
+ 0000009A  7F 46			jg SKIP
+ 0000009C  A1 0000000C R		mov eax, maxY
+ 000000A1  39 05 00000021 R		cmp screenY, eax
+ 000000A7  7F 39			jg SKIP
+					
+					;; lpDisplayBits[screenY*dwPitch + screenX]
+ 000000A9  A1 00000021 R		mov eax, screenY
+ 000000AE  F7 25 00000000 E		mul dwPitch
+ 000000B4  03 05 0000001D R		add eax, screenX
+ 000000BA  8B D8			mov ebx, eax	
+					
+					;; srcBitmap->lpBytes[bmpY*(srcBitmap->dwWidth)+bmpX]
+ 000000BC  A1 00000010 R		mov eax, bmWidth
+ 000000C1  F7 25 00000000 R		mul bmpY
+ 000000C7  03 05 00000004 R		add eax, bmpX
+ 000000CD  8B 15 00000019 R		mov edx, colorBytes
+ 000000D3  03 D0			add edx, eax
+ 000000D5  8A 02			mov al, [edx]
+					
+					;; check transparency
+ 000000D7  3A 05 00000018 R		cmp al, transpValue ; 
+ 000000DD  74 03			je SKIP
+					
+					;; change the color
+ 000000DF  88 04 3B			mov BYTE PTR[edi+ebx], al
+ 000000E2			SKIP:
+
+					;check if bmpX > dwWidth, if not, loop to xLoop and increment
+ 000000E2  A1 00000010 R		mov eax, bmWidth
+ 000000E7  39 05 00000004 R		cmp bmpX, eax
+ 000000ED  7F 0B			jg yLoop
+					
+					;if not at end of the width
+ 000000EF  FF 05 00000004 R		inc bmpX
+ 000000F5  E9 FFFFFF4F			jmp xLoop 
+
+ 000000FA			yLoop:
+ 000000FA  FF 05 00000000 R		inc bmpY    ;increment y
+ 00000100  C7 05 00000004 R		mov bmpX, 0 ;reset bmpX
+	   00000000
+ 0000010A  A1 00000014 R		mov eax, bmHeight
+ 0000010F  39 05 00000000 R		cmp bmpY, eax
+ 00000115  0F 8C FFFFFF2E		jl xLoop 
+					
+				;; fall if bmpY > bmHeight
+ 0000011B			fall: 
+					
+					
+				    ;; 	for(bmpY = 0;  bmpY < srcBitmap->dwHeight; bmpY++)
+				    ;;         	for(bmpX = 0;  bmpX < srcBitmap->dwWidth; bmpX++) {
+					
+				    ;; 		        screenX = centerX + bmpX - srcBitmap->dwWidth/2;
+				    ;; 		        screenY = centerY + bmpY - srcBitmap->dwHeight/2;
+				    ;; 	
+				    ;; 			if (srcBitmap->lpBytes[bmpY*srcBitmap->dwWidth+bmpX] != srcBitmap->bTransparent &&
+				    ;; 			    screenX >= 0 && screenX <= 639 &&
+				    ;; 			    screenY >= 0 && screenY <= 479)
+				    ;; 				lpDisplayBits[screenY*dwPitch + screenX] =
+				    ;; 					srcBitmap->lpBytes[bmpY*srcBitmap->dwWidth+bmpX]; 
+				    ;; 				
+				    ;; 		}
+				    	
+				    
+				    ret             ;; Don't delete this line
+				    
+ 00000120			BlitReg ENDP
+
+
+ 0000002D			.DATA		
+ 0000002D 00000020		StarBitmap EECS205BITMAP <32, 36, 0ffh,, offset StarBitmap + sizeof StarBitmap>
+	   00000024 FF
+	   00000003 [
+	    00
+	   ] 0000003D R
+ 0000003D  FF FF FF FF FF		BYTE 0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0feh
+	   FF FF FF FF FF
+	   FF FF FF FF FF
+	   FE
+ 0000004D  FE FF FF FF FF		BYTE 0feh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh
+	   FF FF FF FF FF
+	   FF FF FF FF FF
+	   FF
+ 0000005D  FF FF FF FF FF		BYTE 0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0feh
+	   FF FF FF FF FF
+	   FF FF FF FF FF
+	   FE
+ 0000006D  FE FE FF FF FF		BYTE 0feh,0feh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh
+	   FF FF FF FF FF
+	   FF FF FF FF FF
+	   FF
+ 0000007D  FF FF FF FF FF		BYTE 0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0feh,0fdh
+	   FF FF FF FF FF
+	   FF FF FF FF FE
+	   FD
+ 0000008D  F9 F9 FF FF FF		BYTE 0f9h,0f9h,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh
+	   FF FF FF FF FF
+	   FF FF FF FF FF
+	   FF
+ 0000009D  FF FF FF FF FF		BYTE 0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0feh,0fdh
+	   FF FF FF FF FF
+	   FF FF FF FF FE
+	   FD
+ 000000AD  F8 F8 FD FF FF		BYTE 0f8h,0f8h,0fdh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh
+	   FF FF FF FF FF
+	   FF FF FF FF FF
+	   FF
+ 000000BD  FF FF FF FF FF		BYTE 0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0feh,0fdh
+	   FF FF FF FF FF
+	   FF FF FF FF FE
+	   FD
+ 000000CD  F8 F8 F8 FE FF		BYTE 0f8h,0f8h,0f8h,0feh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh
+	   FF FF FF FF FF
+	   FF FF FF FF FF
+	   FF
+ 000000DD  FF FF FF FF FF		BYTE 0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0feh,0feh,0fdh
+	   FF FF FF FF FF
+	   FF FF FF FE FE
+	   FD
+ 000000ED  F8 F8 D8 F9 FF		BYTE 0f8h,0f8h,0d8h,0f9h,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh
+	   FF FF FF FF FF
+	   FF FF FF FF FF
+	   FF
+ 000000FD  FF FF FF FF FF		BYTE 0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0feh,0feh,0f9h
+	   FF FF FF FF FF
+	   FF FF FF FE FE
+	   F9
+ 0000010D  F8 F8 D8 D8 FE		BYTE 0f8h,0f8h,0d8h,0d8h,0feh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh
+	   FF FF FF FF FF
+	   FF FF FF FF FF
+	   FF
+ 0000011D  FF FF FF FF FF		BYTE 0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0feh,0fdh,0f8h
+	   FF FF FF FF FF
+	   FF FF FF FE FD
+	   F8
+ 0000012D  F8 F4 F8 D8 D9		BYTE 0f8h,0f4h,0f8h,0d8h,0d9h,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh
+	   FF FF FF FF FF
+	   FF FF FF FF FF
+	   FF
+ 0000013D  FF FF FF FF FF		BYTE 0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0fah,0feh,0fdh,0f8h
+	   FF FF FF FF FF
+	   FF FF FA FE FD
+	   F8
+ 0000014D  F8 F4 F8 D8 D8		BYTE 0f8h,0f4h,0f8h,0d8h,0d8h,0fdh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh
+	   FD FF FF FF FF
+	   FF FF FF FF FF
+	   FF
+ 0000015D  FF FF FF FF FF		BYTE 0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0feh,0feh,0fdh,0f8h
+	   FF FF FF FF FF
+	   FF FF FE FE FD
+	   F8
+ 0000016D  F4 F4 F4 F8 F8		BYTE 0f4h,0f4h,0f4h,0f8h,0f8h,0d4h,0feh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh
+	   D4 FE FF FF FF
+	   FF FF FF FF FF
+	   FF
+ 0000017D  FF FF FF FF FF		BYTE 0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0feh,0feh,0feh,0f9h,0d4h
+	   FF FF FF FF FF
+	   FF FE FE FE F9
+	   D4
+ 0000018D  F8 F4 F4 D4 F8		BYTE 0f8h,0f4h,0f4h,0d4h,0f8h,0f8h,0d4h,0feh,0feh,0feh,0feh,0feh,0feh,0feh,0ffh,0ffh
+	   F8 D4 FE FE FE
+	   FE FE FE FE FF
+	   FF
+ 0000019D  FF FF FF FF FF		BYTE 0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0feh,0feh,0f9h,0fdh,0f8h,0f8h
+	   FF FF FF FF FF
+	   FE FE F9 FD F8
+	   F8
+ 000001AD  F4 F8 F4 F4 F8		BYTE 0f4h,0f8h,0f4h,0f4h,0f8h,0d4h,0d4h,0f8h,0d9h,0d9h,0d9h,0f9h,0d9h,0f9h,0d9h,0fah
+	   D4 D4 F8 D9 D9
+	   D9 F9 D9 F9 D9
+	   FA
+ 000001BD  FF FF FF FF FF		BYTE 0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0feh,0feh,0fdh,0f9h,0f8h,0f8h,0f8h,0f8h
+	   FF FF FF FE FE
+	   FD F9 F8 F8 F8
+	   F8
+ 000001CD  F8 D4 F8 F8 F4		BYTE 0f8h,0d4h,0f8h,0f8h,0f4h,0f8h,0f8h,0d8h,0f8h,0f8h,0f8h,0f8h,0d8h,0d4h,0d5h,0feh
+	   F8 F8 D8 F8 F8
+	   F8 F8 D8 D4 D5
+	   FE
+ 000001DD  FF FF FF FF FF		BYTE 0ffh,0ffh,0ffh,0ffh,0ffh,0feh,0feh,0feh,0f9h,0f9h,0f8h,0f8h,0fch,0fch,0f8h,0f8h
+	   FE FE FE F9 F9
+	   F8 F8 FC FC F8
+	   F8
+ 000001ED  F8 F8 F8 F8 F4		BYTE 0f8h,0f8h,0f8h,0f8h,0f4h,0f8h,0b0h,0d8h,0d8h,0f8h,0f8h,0f4h,0f8h,0d8h,0d9h,0feh
+	   F8 B0 D8 D8 F8
+	   F8 F4 F8 D8 D9
+	   FE
+ 000001FD  FF FF FE FD F9		BYTE 0ffh,0ffh,0feh,0fdh,0f9h,0f8h,0f8h,0f8h,0f8h,0f8h,0fdh,0fdh,0f8h,0f8h,0f8h,0f8h
+	   F8 F8 F8 F8 F8
+	   FD FD F8 F8 F8
+	   F8
+ 0000020D  F8 B0 D8 F8 F8		BYTE 0f8h,0b0h,0d8h,0f8h,0f8h,0f8h,044h,08ch,0d4h,0d8h,0d4h,0d4h,0d4h,0d4h,0feh,0ffh
+	   F8 44 8C D4 D8
+	   D4 D4 D4 D4 FE
+	   FF
+ 0000021D  FE FE D9 D8 F8		BYTE 0feh,0feh,0d9h,0d8h,0f8h,0f8h,0fch,0fch,0f8h,0f8h,0f8h,0f8h,0f8h,0f8h,0f8h,0fch
+	   F8 FC FC F8 F8
+	   F8 F8 F8 F8 F8
+	   FC
+ 0000022D  F8 6C 6C FC F8		BYTE 0f8h,06ch,06ch,0fch,0f8h,0d8h,06ch,06ch,0d4h,0f8h,0d4h,0d4h,0d4h,0d5h,0ffh,0ffh
+	   D8 6C 6C D4 F8
+	   D4 D4 D4 D5 FF
+	   FF
+ 0000023D  FF DA D4 D4 F8		BYTE 0ffh,0dah,0d4h,0d4h,0f8h,0f8h,0f8h,0f8h,0f4h,0f4h,0f4h,0f8h,0f8h,0f8h,0fch,0fch
+	   F8 F8 F8 F4 F4
+	   F4 F8 F8 F8 FC
+	   FC
+ 0000024D  FD 6C 6C FD FC		BYTE 0fdh,06ch,06ch,0fdh,0fch,0d8h,048h,068h,0f8h,0d4h,0d4h,0d4h,0d4h,0feh,0ffh,0ffh
+	   D8 48 68 F8 D4
+	   D4 D4 D4 FE FF
+	   FF
+ 0000025D  FF FF FE D8 D4		BYTE 0ffh,0ffh,0feh,0d8h,0d4h,0f4h,0f8h,0f4h,0f4h,0f4h,0f8h,0f8h,0f8h,0f8h,0fch,0fch
+	   F4 F8 F4 F4 F4
+	   F8 F8 F8 F8 FC
+	   FC
+ 0000026D  FD 48 48 FD FC		BYTE 0fdh,048h,048h,0fdh,0fch,0fch,044h,024h,0f8h,0d4h,0d4h,0d4h,0d9h,0ffh,0ffh,0ffh
+	   FC 44 24 F8 D4
+	   D4 D4 D9 FF FF
+	   FF
+ 0000027D  FF FF FF FE F9		BYTE 0ffh,0ffh,0ffh,0feh,0f9h,0f8h,0f8h,0f8h,0f8h,0f8h,0f8h,0f8h,0f8h,0fch,0fch,0fch
+	   F8 F8 F8 F8 F8
+	   F8 F8 F8 FC FC
+	   FC
+ 0000028D  FD 48 00 FD FC		BYTE 0fdh,048h,000h,0fdh,0fch,0f8h,048h,024h,0f8h,0f4h,0d4h,0d5h,0ffh,0ffh,0ffh,0ffh
+	   F8 48 24 F8 F4
+	   D4 D5 FF FF FF
+	   FF
+ 0000029D  FF FF FF FF FE		BYTE 0ffh,0ffh,0ffh,0ffh,0feh,0f9h,0f8h,0f8h,0d8h,0f8h,0f8h,0f8h,0f8h,0fch,0fch,0fch
+	   F9 F8 F8 D8 F8
+	   F8 F8 F8 FC FC
+	   FC
+ 000002AD  FC 6C 20 F8 FC		BYTE 0fch,06ch,020h,0f8h,0fch,0fch,090h,044h,0f8h,0f4h,0d4h,0fah,0ffh,0ffh,0ffh,0ffh
+	   FC 90 44 F8 F4
+	   D4 FA FF FF FF
+	   FF
+ 000002BD  FF FF FF FF FF		BYTE 0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0fdh,0f9h,0d8h,0d8h,0f8h,0f8h,0f8h,0fch,0fch,0fch
+	   FF FD F9 D8 D8
+	   F8 F8 F8 FC FC
+	   FC
+ 000002CD  FC B4 20 FD FC		BYTE 0fch,0b4h,020h,0fdh,0fch,0fch,0d8h,0d8h,0f8h,0f4h,0d5h,0feh,0ffh,0ffh,0ffh,0ffh
+	   FC D8 D8 F8 F4
+	   D5 FE FF FF FF
+	   FF
+ 000002DD  FF FF FF FF FF		BYTE 0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0feh,0f9h,0d8h,0f8h,0f8h,0f8h,0fch,0fch,0fch
+	   FF FF FE F9 D8
+	   F8 F8 F8 FC FC
+	   FC
+ 000002ED  FC FC FC FC FC		BYTE 0fch,0fch,0fch,0fch,0fch,0fch,0f8h,0d8h,0f8h,0f4h,0d5h,0feh,0ffh,0ffh,0ffh,0ffh
+	   FC F8 D8 F8 F4
+	   D5 FE FF FF FF
+	   FF
+ 000002FD  FF FF FF FF FF		BYTE 0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0feh,0f9h,0f8h,0f8h,0f8h,0fch,0fch,0fch
+	   FF FF FF FE F9
+	   F8 F8 F8 FC FC
+	   FC
+ 0000030D  FC FC FC FC FC		BYTE 0fch,0fch,0fch,0fch,0fch,0fch,0fch,0d8h,0f8h,0d4h,0d4h,0feh,0ffh,0ffh,0ffh,0ffh
+	   FC FC D8 F8 D4
+	   D4 FE FF FF FF
+	   FF
+ 0000031D  FF FF FF FF FF		BYTE 0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0feh,0f8h,0f8h,0f8h,0f8h,0fch,0fch
+	   FF FF FF FF FE
+	   F8 F8 F8 F8 FC
+	   FC
+ 0000032D  FC FC FC FC FC		BYTE 0fch,0fch,0fch,0fch,0fch,0f8h,0f8h,0d8h,0f8h,0d4h,0d4h,0feh,0ffh,0ffh,0ffh,0ffh
+	   F8 F8 D8 F8 D4
+	   D4 FE FF FF FF
+	   FF
+ 0000033D  FF FF FF FF FF		BYTE 0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0feh,0f8h,0f8h,0f8h,0f8h,0f8h,0fch
+	   FF FF FF FF FE
+	   F8 F8 F8 F8 F8
+	   FC
+ 0000034D  FC FC FC FC F8		BYTE 0fch,0fch,0fch,0fch,0f8h,0f8h,0f8h,0d8h,0d4h,0d4h,0d4h,0feh,0ffh,0ffh,0ffh,0ffh
+	   F8 F8 D8 D4 D4
+	   D4 FE FF FF FF
+	   FF
+ 0000035D  FF FF FF FF FF		BYTE 0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0feh,0f8h,0f8h,0f8h,0f8h,0f8h,0f8h
+	   FF FF FF FF FE
+	   F8 F8 F8 F8 F8
+	   F8
+ 0000036D  F8 FC F8 F8 F8		BYTE 0f8h,0fch,0f8h,0f8h,0f8h,0f8h,0d8h,0f8h,0f4h,0d4h,0d4h,0f9h,0ffh,0ffh,0ffh,0ffh
+	   F8 D8 F8 F4 D4
+	   D4 F9 FF FF FF
+	   FF
+ 0000037D  FF FF FF FF FF		BYTE 0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0feh,0f8h,0f8h,0f4h,0f8h,0f8h,0f8h
+	   FF FF FF FF FE
+	   F8 F8 F4 F8 F8
+	   F8
+ 0000038D  F8 F8 F8 F8 F8		BYTE 0f8h,0f8h,0f8h,0f8h,0f8h,0f8h,0f8h,0d4h,0d4h,0d4h,0f4h,0f9h,0ffh,0ffh,0ffh,0ffh
+	   F8 F8 D4 D4 D4
+	   F4 F9 FF FF FF
+	   FF
+ 0000039D  FF FF FF FF FF		BYTE 0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0fah,0f8h,0f4h,0f4h,0f8h,0f8h,0f8h
+	   FF FF FF FF FA
+	   F8 F4 F4 F8 F8
+	   F8
+ 000003AD  F8 F8 F8 F8 D4		BYTE 0f8h,0f8h,0f8h,0f8h,0d4h,0d4h,0d4h,0d4h,0d4h,0d4h,0d4h,0d5h,0ffh,0ffh,0ffh,0ffh
+	   D4 D4 D4 D4 D4
+	   D4 D5 FF FF FF
+	   FF
+ 000003BD  FF FF FF FF FF		BYTE 0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0fah,0f8h,0f4h,0f4h,0f4h,0f4h,0d4h
+	   FF FF FF FF FA
+	   F8 F4 F4 F4 F4
+	   D4
+ 000003CD  D4 D8 D4 F9 F9		BYTE 0d4h,0d8h,0d4h,0f9h,0f9h,0d5h,0b0h,0d4h,0d4h,0d4h,0d4h,0d4h,0ffh,0ffh,0ffh,0ffh
+	   D5 B0 D4 D4 D4
+	   D4 D4 FF FF FF
+	   FF
+ 000003DD  FF FF FF FF FF		BYTE 0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0f9h,0f8h,0f4h,0f4h,0f4h,0d4h,0d4h
+	   FF FF FF FF F9
+	   F8 F4 F4 F4 D4
+	   D4
+ 000003ED  D8 D4 FE FF FF		BYTE 0d8h,0d4h,0feh,0ffh,0ffh,0ffh,0feh,0d5h,0d5h,0d4h,0d4h,0d5h,0ffh,0ffh,0ffh,0ffh
+	   FF FE D5 D5 D4
+	   D4 D5 FF FF FF
+	   FF
+ 000003FD  FF FF FF FF FF		BYTE 0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0f9h,0f8h,0f4h,0f4h,0f4h,0d4h,0d8h
+	   FF FF FF FF F9
+	   F8 F4 F4 F4 D4
+	   D8
+ 0000040D  D5 FE FF FF FF		BYTE 0d5h,0feh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0fah,0d5h,0b5h,0ffh,0ffh,0ffh,0ffh
+	   FF FF FF FF FA
+	   D5 B5 FF FF FF
+	   FF
+ 0000041D  FF FF FF FF FF		BYTE 0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0f9h,0f4h,0f4h,0f4h,0d4h,0d4h,0f9h
+	   FF FF FF FF F9
+	   F4 F4 F4 D4 D4
+	   F9
+ 0000042D  FE FF FF FF FF		BYTE 0feh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh
+	   FF FF FF FF FF
+	   FF FF FF FF FF
+	   FF
+ 0000043D  FF FF FF FF FF		BYTE 0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0d9h,0d8h,0d4h,0d4h,0d5h,0fah,0ffh
+	   FF FF FF FF D9
+	   D8 D4 D4 D5 FA
+	   FF
+ 0000044D  FF FF FF FF FF		BYTE 0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh
+	   FF FF FF FF FF
+	   FF FF FF FF FF
+	   FF
+ 0000045D  FF FF FF FF FF		BYTE 0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0fah,0d4h,0d4h,0d5h,0feh,0ffh,0ffh
+	   FF FF FF FF FA
+	   D4 D4 D5 FE FF
+	   FF
+ 0000046D  FF FF FF FF FF		BYTE 0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh
+	   FF FF FF FF FF
+	   FF FF FF FF FF
+	   FF
+ 0000047D  FF FF FF FF FF		BYTE 0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0dah,0d5h,0d4h,0feh,0ffh,0ffh,0ffh
+	   FF FF FF FF DA
+	   D5 D4 FE FF FF
+	   FF
+ 0000048D  FF FF FF FF FF		BYTE 0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh
+	   FF FF FF FF FF
+	   FF FF FF FF FF
+	   FF
+ 0000049D  FF FF FF FF FF		BYTE 0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0feh,0f9h,0feh,0ffh,0ffh,0ffh,0ffh
+	   FF FF FF FF FE
+	   F9 FE FF FF FF
+	   FF
+ 000004AD  FF FF FF FF FF		BYTE 0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh,0ffh
+	   FF FF FF FF FF
+	   FF FF FF FF FF
+	   FF
+						
+
+				END
+Microsoft (R) Macro Assembler Version 6.14.8444		    03/13/14 22:50:03
+blit.asm						     Symbols 2 - 1
+
+
+
+
+Structures and Unions:
+
+                N a m e                  Size
+                                         Offset      Type
+
+_EECS205BITMAP . . . . . . . . .	 00000010
+  dwWidth  . . . . . . . . . . .	 00000000	 DWord
+  dwHeight . . . . . . . . . . .	 00000004	 DWord
+  bTransparent . . . . . . . . .	 00000008	 Byte
+  lpBytes  . . . . . . . . . . .	 0000000C	 DWord
+
+
+Types:
+
+                N a m e                  Size     Attr
+
+EECS205BITMAP  . . . . . . . . .	 00000010     _EECS205BITMAP 
+
+
+Segments and Groups:
+
+                N a m e                 Size     Length   Align   Combine Class
+
+FLAT . . . . . . . . . . . . . .	GROUP
+STACK  . . . . . . . . . . . . .	32 Bit	 00001000 Para	  Stack	  'STACK'	 
+_DATA  . . . . . . . . . . . . .	32 Bit	 000004BD Para	  Public  'DATA'	
+_TEXT  . . . . . . . . . . . . .	32 Bit	 00000120 Para	  Public  'CODE'	
+
+
+Procedures,  parameters and locals:
+
+                N a m e                 Type     Value    Attr
+
+BlitReg  . . . . . . . . . . . .	P Near	 00000000 _TEXT	Length= 00000120 Public STDCALL
+  xLoop  . . . . . . . . . . . .	L Near	 00000049 _TEXT	
+  SKIP . . . . . . . . . . . . .	L Near	 000000E2 _TEXT	
+  yLoop  . . . . . . . . . . . .	L Near	 000000FA _TEXT	
+  fall . . . . . . . . . . . . .	L Near	 0000011B _TEXT	
+
+
+Symbols:
+
+                N a m e                 Type     Value    Attr
+
+@CodeSize  . . . . . . . . . . .	Number	 00000000h   
+@DataSize  . . . . . . . . . . .	Number	 00000000h   
+@Interface . . . . . . . . . . .	Number	 00000003h   
+@Model . . . . . . . . . . . . .	Number	 00000007h   
+@code  . . . . . . . . . . . . .	Text   	 _TEXT
+@data  . . . . . . . . . . . . .	Text   	 FLAT
+@fardata?  . . . . . . . . . . .	Text   	 FLAT
+@fardata . . . . . . . . . . . .	Text   	 FLAT
+@stack . . . . . . . . . . . . .	Text   	 FLAT
+StarBitmap . . . . . . . . . . .	_EECS205BITMAP  0000002D _DATA	Public STDCALL
+bmHeight . . . . . . . . . . . .	DWord	 00000014 _DATA	
+bmWidth  . . . . . . . . . . . .	DWord	 00000010 _DATA	
+bmpX . . . . . . . . . . . . . .	DWord	 00000004 _DATA	
+bmpY . . . . . . . . . . . . . .	DWord	 00000000 _DATA	
+centerX  . . . . . . . . . . . .	DWord	 00000025 _DATA	
+centerY  . . . . . . . . . . . .	DWord	 00000029 _DATA	
+colorBytes . . . . . . . . . . .	DWord	 00000019 _DATA	
+dwPitch  . . . . . . . . . . . .	DWord	 00000000 FLAT	External STDCALL
+lpDisplayBits  . . . . . . . . .	DWord	 00000000 FLAT	External STDCALL
+maxX . . . . . . . . . . . . . .	DWord	 00000008 _DATA	
+maxY . . . . . . . . . . . . . .	DWord	 0000000C _DATA	
+screenX  . . . . . . . . . . . .	DWord	 0000001D _DATA	
+screenY  . . . . . . . . . . . .	DWord	 00000021 _DATA	
+transpValue  . . . . . . . . . .	Byte	 00000018 _DATA	
+
+	   0 Warnings
+	   0 Errors

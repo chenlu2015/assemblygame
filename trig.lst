@@ -1,0 +1,214 @@
+Microsoft (R) Macro Assembler Version 6.14.8444		    03/13/14 22:50:03
+trig.asm						     Page 1 - 1
+
+
+				; #########################################################################
+				;
+				;   trig.asm - Assembly file for EECS205 Assignment 3
+				;
+				;
+				; #########################################################################
+
+				      .586
+				      .MODEL FLAT,STDCALL
+				      .STACK 4096
+				      option casemap :none  ; case sensitive
+
+				    include trig.inc	
+			      C ; #########################################################################
+			      C ;
+			      C ;   trig.inc - Includes for EECS205 Assignment 3
+			      C ;
+			      C ;
+			      C ; #########################################################################
+			      C 
+			      C ;; FIXED is a fixed point number (16 bit integer and 16 bit fractional components)
+			      C ;;    To convert a FIXED value in eax into an integer:  sar eax, 16
+			      C ;;    To convert an integer value in eax into a FIXED:  shl eax, 16
+			      C FIXED TYPEDEF DWORD
+			      C 
+			      C EXTERNDEF SINTAB:WORD 
+			      C 
+			      C FixedSin PROTO STDCALL dwAngle:FIXED 
+			      C FixedCos PROTO STDCALL dwAngle:FIXED
+			      C 
+			      C 
+			      C 
+			      C 
+			      C 
+
+ 00000000			.DATA
+
+				;;  These are some useful constants (fixed point values that correspond to important angles)
+ = 0001921F			PI_HALF = 102943           		;;  PI / 2
+ = 0003243F			PI =  205887	                ;;  PI 
+ = 0006487E			TWO_PI	= 411774                ;;  2 * PI 
+ = 00517CC1			PI_INC_RECIP =  5340353        	;;  256 / PI   (use this to find the table entry for a given angle
+												;;              it is easier to use than divison would be)
+
+ 00000000			.CODE
+				;; Define the functions FixedSin and FixedCos
+				;; Since we have thoroughly covered defining functions in class, its up to you from here on out...
+				;; Remember to include the 'ret' instruction or your program will hang
+				;; Also, don't forget to set your return values
+
+ 00000000			FixedSin PROC dwAngle:FIXED
+				;;    To convert a FIXED value in eax into an integer:  sar eax, 16
+				;;    To convert an integer value in eax into a FIXED:  shl eax, 16
+ 00000003  8B 45 08			mov eax, dwAngle
+ 00000006  8B D8			mov ebx, eax
+ 00000008  33 F6			xor esi, esi ; 0 flag
+ 0000000A  33 FF			xor edi, edi ; 2nd 0 flag
+					
+ 0000000C  C1 EB 1F			shr ebx, 31
+ 0000000F  75 4B			jnz CASE5
+ 00000011			TESTAGAIN:	
+ 00000011  3D 0006487E			cmp eax, TWO_PI
+ 00000016  7D 3D			jge CASE4
+ 00000018  3D 0003243F			cmp eax, PI
+ 0000001D  7D 2E			jge CASE3
+ 0000001F  3D 0001921F			cmp eax, PI_HALF
+ 00000024  7D 0F			jge CASE2
+					;else jmp case 1
+
+				;CASE1 [0,Pi/2)
+				;angle in eax
+ 00000026			CASE1:
+ 00000026  33 D2			xor edx, edx
+ 00000028  BB 00517CC1			mov ebx, PI_INC_RECIP
+ 0000002D  F7 EB			imul ebx
+ 0000002F  8B C2			mov eax, edx ; index
+ 00000031  D1 E0			shl eax, 1 ; multiply by 2
+ 00000033  EB 2D			jmp ENDSWITCH
+					
+				;CASE [Pi/2, Pi)
+				;angle in eax
+ 00000035			CASE2:
+ 00000035  BB 0003243F			mov ebx, PI
+ 0000003A  2B D8			sub ebx, eax
+ 0000003C  33 D2			xor edx, edx
+ 0000003E  8B C3			mov eax, ebx
+ 00000040  BB 00517CC1			mov ebx, PI_INC_RECIP
+ 00000045  F7 EB			imul ebx
+ 00000047  8B C2			mov eax, edx ;index
+ 00000049  D1 E0			shl eax, 1 ; multiply by 2
+ 0000004B  EB 15			jmp ENDSWITCH
+
+				;CASE3 [Pi, 2Pi)
+				; sin(x+pi) = -sin(x)
+ 0000004D			CASE3:
+ 0000004D  2D 0003243F			sub eax, PI ; x-180 
+ 00000052  46				inc esi ; need to negate
+ 00000053  EB BC			jmp TESTAGAIN
+
+				;CASE4 [2Pi, Inf)
+				; sin(x+pi) = -sin(x)	
+ 00000055			CASE4:
+ 00000055  2D 0006487E			sub eax, TWO_PI; x-360
+ 0000005A  EB B5			jmp TESTAGAIN
+				;CASE5[-inf, 0)
+ 0000005C			CASE5:
+ 0000005C  F7 D0			not eax
+ 0000005E  40				inc eax
+ 0000005F  47				inc edi
+ 00000060  EB AF			jmp TESTAGAIN
+				;eax = index *2
+				;return sina
+ 00000062			ENDSWITCH:	
+				;esi = flagcheck if need to negate
+ 00000062  BB 00000000 E		mov ebx, OFFSET SINTAB 	;sintab address
+ 00000067  03 D8			add ebx, eax 			;move to right location
+ 00000069  33 C0			xor eax, eax
+ 0000006B  66| 8B 03			mov ax, [ebx]
+					
+ 0000006E  83 FE 00			cmp esi, 0
+ 00000071  75 07			jnz NEGATIVE ; check if need to negate. if not, fall
+					
+ 00000073  EB 08			jmp FALL
+ 00000075			NEGATEAGAIN:
+ 00000075  F7 D0			not eax
+ 00000077  40				inc eax
+ 00000078  EB 08			jmp LAST
+ 0000007A			NEGATIVE:
+ 0000007A  F7 D0			not eax
+ 0000007C  40				inc eax
+ 0000007D			FALL:
+ 0000007D  83 FF 00			cmp edi, 0
+ 00000080  75 F3			jnz NEGATEAGAIN ; check if need to negate. if not, fall
+ 00000082			LAST:
+					ret
+ 00000086			FixedSin ENDP
+					
+ 00000086			FixedCos PROC dwAngle:FIXED
+ 00000089  8B 45 08			mov eax, dwAngle
+ 0000008C  05 0001921F			add eax, PI_HALF
+					INVOKE FixedSin, eax
+					ret
+ 0000009B			FixedCos ENDP
+					
+				END
+Microsoft (R) Macro Assembler Version 6.14.8444		    03/13/14 22:50:03
+trig.asm						     Symbols 2 - 1
+
+
+
+
+Types:
+
+                N a m e                  Size     Attr
+
+FIXED  . . . . . . . . . . . . .	 00000004     DWord 
+
+
+Segments and Groups:
+
+                N a m e                 Size     Length   Align   Combine Class
+
+FLAT . . . . . . . . . . . . . .	GROUP
+STACK  . . . . . . . . . . . . .	32 Bit	 00001000 Para	  Stack	  'STACK'	 
+_DATA  . . . . . . . . . . . . .	32 Bit	 00000000 Para	  Public  'DATA'	
+_TEXT  . . . . . . . . . . . . .	32 Bit	 0000009B Para	  Public  'CODE'	
+
+
+Procedures,  parameters and locals:
+
+                N a m e                 Type     Value    Attr
+
+FixedCos . . . . . . . . . . . .	P Near	 00000086 _TEXT	Length= 00000015 Public STDCALL
+  dwAngle  . . . . . . . . . . .	DWord	 bp + 00000008
+FixedSin . . . . . . . . . . . .	P Near	 00000000 _TEXT	Length= 00000086 Public STDCALL
+  dwAngle  . . . . . . . . . . .	DWord	 bp + 00000008
+  TESTAGAIN  . . . . . . . . . .	L Near	 00000011 _TEXT	
+  CASE1  . . . . . . . . . . . .	L Near	 00000026 _TEXT	
+  CASE2  . . . . . . . . . . . .	L Near	 00000035 _TEXT	
+  CASE3  . . . . . . . . . . . .	L Near	 0000004D _TEXT	
+  CASE4  . . . . . . . . . . . .	L Near	 00000055 _TEXT	
+  CASE5  . . . . . . . . . . . .	L Near	 0000005C _TEXT	
+  ENDSWITCH  . . . . . . . . . .	L Near	 00000062 _TEXT	
+  NEGATEAGAIN  . . . . . . . . .	L Near	 00000075 _TEXT	
+  NEGATIVE . . . . . . . . . . .	L Near	 0000007A _TEXT	
+  FALL . . . . . . . . . . . . .	L Near	 0000007D _TEXT	
+  LAST . . . . . . . . . . . . .	L Near	 00000082 _TEXT	
+
+
+Symbols:
+
+                N a m e                 Type     Value    Attr
+
+@CodeSize  . . . . . . . . . . .	Number	 00000000h   
+@DataSize  . . . . . . . . . . .	Number	 00000000h   
+@Interface . . . . . . . . . . .	Number	 00000003h   
+@Model . . . . . . . . . . . . .	Number	 00000007h   
+@code  . . . . . . . . . . . . .	Text   	 _TEXT
+@data  . . . . . . . . . . . . .	Text   	 FLAT
+@fardata?  . . . . . . . . . . .	Text   	 FLAT
+@fardata . . . . . . . . . . . .	Text   	 FLAT
+@stack . . . . . . . . . . . . .	Text   	 FLAT
+PI_HALF  . . . . . . . . . . . .	Number	 0001921Fh   
+PI_INC_RECIP . . . . . . . . . .	Number	 00517CC1h   
+PI . . . . . . . . . . . . . . .	Number	 0003243Fh   
+SINTAB . . . . . . . . . . . . .	Word	 00000000 FLAT	External STDCALL
+TWO_PI . . . . . . . . . . . . .	Number	 0006487Eh   
+
+	   0 Warnings
+	   0 Errors
