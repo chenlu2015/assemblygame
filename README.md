@@ -1,5 +1,5 @@
-assemblygame
-============
+Assembly Game
+======================
 
 2D scroller game written in assembly using sprites found from the web.
 
